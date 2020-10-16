@@ -106,6 +106,7 @@ import salt.utils.minions
 # Attempt to import the 'hvac' module
 try:
     import hvac
+
     HAS_HVAC = True
 except ImportError:
     HAS_HVAC = False
@@ -115,21 +116,21 @@ LOG = logging.getLogger(__name__)
 
 # Default config values
 CONF = {
-    'url': 'https://vault:8200',
-    'config': '/srv/salt/secrets.yml',
-    'token': None,
-    'app_id': None,
-    'user_id': None,
-    'user_file': None,
-    'role_id': None,
-    'secret_id': None,
-    'secret_file': None,
-    'unset_if_missing': False
+    "url": "https://vault:8200",
+    "config": "/srv/salt/secrets.yml",
+    "token": None,
+    "app_id": None,
+    "user_id": None,
+    "user_file": None,
+    "role_id": None,
+    "secret_id": None,
+    "secret_file": None,
+    "unset_if_missing": False,
 }
 
+
 def __virtual__():
-    """ Only return if hvac is installed
-    """
+    """Only return if hvac is installed"""
     if HAS_HVAC:
         return True
     else:
@@ -138,8 +139,7 @@ def __virtual__():
 
 
 def _get_id_from_file(source="/.vault-id"):
-    """ Reads a UUID from file (default: /.vault-id)
-    """
+    """Reads a UUID from file (default: /.vault-id)"""
     source = os.path.abspath(os.path.expanduser(source))
     LOG.debug("Reading '%s' for user_id", source)
 
@@ -155,8 +155,8 @@ def _get_id_from_file(source="/.vault-id"):
 
 
 def _authenticate(conn):
-    """ Determine the appropriate authentication method and authenticate
-        for a token, if necesssary.
+    """
+    Determine the appropriate authentication method and authenticate for a token, if necesssary.
     """
 
     # Check for explicit token, first
@@ -176,7 +176,7 @@ def _authenticate(conn):
         result = conn.auth_approle(CONF["role_id"], secret_id)
         # Required until https://github.com/ianunruh/hvac/pull/90
         # is merged, due in hvac 0.3.0
-        conn.token = result['auth']['client_token']
+        conn.token = result["auth"]["client_token"]
 
     # Check for explicit app-id authentication
     elif CONF["app_id"]:
@@ -194,8 +194,8 @@ def _authenticate(conn):
     # TODO: Add additional auth methods here
 
     # Check for token in ENV
-    elif os.environ.get('VAULT_TOKEN'):
-        conn.token = os.environ.get('VAULT_TOKEN')
+    elif os.environ.get("VAULT_TOKEN"):
+        conn.token = os.environ.get("VAULT_TOKEN")
 
 
 def couple(location, conn):
@@ -206,7 +206,7 @@ def couple(location, conn):
     coupled_data = {}
     if isinstance(location, str):
         try:
-            (path, key) = location.split('?', 1)
+            (path, key) = location.split("?", 1)
         except ValueError:
             (path, key) = (location, None)
         secret = conn.read(path)
@@ -214,7 +214,7 @@ def couple(location, conn):
             secret = secret["data"].get(key, None)
             prefix = "base64:"
             if secret and secret.startswith(prefix):
-                secret = base64.b64decode(secret[len(prefix):]).rstrip()
+                secret = base64.b64decode(secret[len(prefix) :]).rstrip()
         if secret or not CONF["unset_if_missing"]:
             return secret
     elif isinstance(location, dict):
@@ -224,10 +224,8 @@ def couple(location, conn):
         return coupled_data
 
 
-
 def ext_pillar(minion_id, pillar, *args, **kwargs):
-    """ Main handler. Compile pillar data for the specified minion ID
-    """
+    """Main handler. Compile pillar data for the specified minion ID"""
     vault_pillar = {}
 
     # Load configuration values
@@ -244,7 +242,9 @@ def ext_pillar(minion_id, pillar, *args, **kwargs):
 
     # Read the secret map
     renderers = salt.loader.render(__opts__, __salt__)
-    raw_yml = salt.template.compile_template(CONF["config"], renderers, 'jinja', whitelist=[], blacklist=[])
+    raw_yml = salt.template.compile_template(
+        CONF["config"], renderers, "jinja", whitelist=[], blacklist=[]
+    )
     if raw_yml:
         secret_map = yaml.safe_load(raw_yml.getvalue()) or {}
     else:
@@ -262,15 +262,14 @@ def ext_pillar(minion_id, pillar, *args, **kwargs):
     # Apply the compound filters to determine which secrets to expose for this minion
     ckminions = salt.utils.minions.CkMinions(__opts__)
     for filter, secrets in secret_map.items():
-        minions =  ckminions.check_minions(filter, "compound")
-        if 'minions' in minions:
+        minions = ckminions.check_minions(filter, "compound")
+        if "minions" in minions:
             # In Salt 2018 this is now in a kwarg
-            minions = minions['minions']
+            minions = minions["minions"]
         if minion_id in minions:
             for variable, location in secrets.items():
                 return_data = couple(location, conn)
                 if return_data:
                     vault_pillar[variable] = return_data
-
 
     return vault_pillar
